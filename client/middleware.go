@@ -4,34 +4,34 @@ import (
 	jwt "github.com/appleboy/gin-jwt/v2"
 	"github.com/candbright/client-auth/repo"
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
 	"net/http"
 	"time"
 )
 
 var identityKey = "phone_number"
+var defaultPhoneNumber = "15888888888"
 var defaultUsername = "admin"
 var defaultPassword = "admin@123456"
 
 var adminUser = &repo.User{
 	Username:    defaultUsername,
 	Password:    defaultPassword,
-	PhoneNumber: "18888888888",
+	PhoneNumber: defaultPhoneNumber,
 }
 
 type MiddlewareConfig struct {
-	Realm                string
-	GetUserByPhoneNumber func(phoneNumber string) (repo.User, error)
-	Unauthorized         func(c *gin.Context, code int, message string)
-	NoRoute              func(*gin.Context)
+	Realm           string
+	RegisterOrLogin func(phoneNumber, code string) (repo.User, error)
+	Unauthorized    func(c *gin.Context, code int, message string)
+	NoRoute         func(*gin.Context)
 }
 
 func (client *client) AuthMiddleware(router gin.IRouter, config *MiddlewareConfig) gin.IRouter {
 	if config.Realm == "" {
 		config.Realm = "unknown"
 	}
-	if config.GetUserByPhoneNumber == nil {
-		config.GetUserByPhoneNumber = client.GetUserByPhoneNumber
+	if config.RegisterOrLogin == nil {
+		config.RegisterOrLogin = client.RegisterOrLogin
 	}
 	if config.Unauthorized == nil {
 		config.Unauthorized = func(c *gin.Context, code int, message string) {
@@ -63,30 +63,28 @@ func (client *client) AuthMiddleware(router gin.IRouter, config *MiddlewareConfi
 			}
 			return jwt.MapClaims{}
 		},
-		IdentityHandler: func(c *gin.Context) interface{} {
-			claims := jwt.ExtractClaims(c)
-			phoneNumber := claims[identityKey].(string)
-			if phoneNumber == adminUser.PhoneNumber {
-				return adminUser
-			}
-			user, _ := config.GetUserByPhoneNumber(phoneNumber)
-			return &user
-		},
+		/*		IdentityHandler: func(c *gin.Context) interface{} {
+				claims := jwt.ExtractClaims(c)
+				phoneNumber := claims[identityKey].(string)
+				if phoneNumber == adminUser.PhoneNumber {
+					return adminUser
+				}
+				user, _ := config.GetUserByPhoneNumber(phoneNumber)
+				return &user
+			},*/
 		Authenticator: func(c *gin.Context) (interface{}, error) {
-			var loginVal repo.User
-			if err := c.ShouldBind(&loginVal); err != nil {
-				return "", errors.New("missing phone number")
-			}
-			username := loginVal.Username
-			password := loginVal.Password
-			phoneNumber := loginVal.PhoneNumber
+			//account
+			phoneNumber := c.Query("phone_number")
+			//validate rule
+			password := c.Query("password")
+			code := c.Query("code")
 
-			if username == defaultUsername && password == defaultPassword {
+			if phoneNumber == defaultPhoneNumber && password == defaultPassword {
 				return adminUser, nil
 			}
-			user, err := config.GetUserByPhoneNumber(phoneNumber)
+			user, err := config.RegisterOrLogin(phoneNumber, code)
 			if err != nil {
-				return nil, errors.New("incorrect phone number")
+				return nil, err
 			}
 			return &user, nil
 		},

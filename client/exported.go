@@ -20,5 +20,5 @@ func Default() Client {
 }
 
 func New(endpoint string) Client {
-	return &client{endpoint, resty.New()}
+	return &client{endpoint: endpoint, client: resty.New()}
 }
